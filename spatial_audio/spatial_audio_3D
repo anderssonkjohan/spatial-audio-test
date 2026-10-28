@@ -27,14 +27,18 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 .chk{flex-direction:row;align-items:center;color:var(--fg);font-size:14px;min-width:auto;gap:6px}
 #joy{position:fixed;right:24px;bottom:calc(28px + env(safe-area-inset-bottom,0px));width:120px;height:120px;border-radius:50%;background:var(--card);border:1px solid var(--ln);opacity:.85;touch-action:none;display:none;z-index:6}
 #knob{position:absolute;left:35px;top:35px;width:50px;height:50px;border-radius:50%;background:var(--acc)}
+#paper-view{position:fixed;inset:0;z-index:4;display:none;align-items:center;justify-content:center;pointer-events:none}
+#paper-view img{width:min(72vw,520px);height:min(72vh,520px);object-fit:contain;filter:drop-shadow(0 12px 24px rgba(0,0,0,.28))}
+#paper-prompt{position:absolute;bottom:14vh;padding:10px 16px;border-radius:10px;background:rgba(20,23,34,.82);color:var(--fg);font-weight:600}
 </style></head><body>
 <canvas id="gl"></canvas>
+<div id="paper-view" aria-live="polite"><img id="paper-frame" src="images/paper_1.png" alt="Unfolding paper"><div id="paper-prompt" style="display:none">Press Enter to close.</div></div>
 <div id="joy"><div id="knob"></div></div>
 <div id="ui"><main>
 <button class="p" id="tg">🎧 Hide controls</button>
 <div id="panel">
 <h1>🎧 Spatial Audio Player</h1>
-<p class="s">Walk around the room: W A S D or the joystick, drag the 3D view to look. Drag path points on the map to reshape the sound's route.</p>
+<p class="s">Walk around the room: W A S D or the joystick, drag the 3D view to look. Approach each paper to unfold it, then press Enter to close. Drag path points on the map to reshape the sound's route.</p>
 
 <div class="card"><canvas id="c" width="440" height="440"></canvas>
 <div class="t" style="margin-top:8px"><span id="pos">Front</span><span id="dist"></span></div></div>
@@ -138,10 +142,58 @@ const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 /* ---------- 3D scene ---------- */
 const rd=new THREE.WebGLRenderer({canvas:$('gl'),antialias:true});rd.setPixelRatio(Math.min(devicePixelRatio,2));rd.shadowMap.enabled=true;rd.shadowMap.type=THREE.PCFSoftShadowMap;rd.toneMapping=THREE.ACESFilmicToneMapping;rd.toneMappingExposure=1.1;
 const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(70,1,0.05,60);cam.rotation.order='YXZ';
-const floor=new THREE.Mesh(new THREE.PlaneGeometry(14,14).rotateX(-Math.PI/2),new THREE.MeshStandardMaterial({color:0x363c55,roughness:0.35,metalness:0.1}));floor.receiveShadow=true;scene.add(floor);
-const wallMat=new THREE.MeshStandardMaterial({color:0x2c3248,roughness:0.9,side:THREE.DoubleSide});
-[[0,-7,0],[0,7,0],[-7,0,Math.PI/2],[7,0,Math.PI/2]].forEach(([x,z,r])=>{const w=new THREE.Mesh(new THREE.PlaneGeometry(14,3),wallMat);w.position.set(x,1.5,z);w.rotation.y=r;w.receiveShadow=true;scene.add(w)});
-const ceil=new THREE.Mesh(new THREE.PlaneGeometry(14,14).rotateX(Math.PI/2),wallMat);ceil.position.y=3;ceil.receiveShadow=true;scene.add(ceil);
+const paperTexture=new THREE.TextureLoader().load('images/paper_texture.jpg');
+paperTexture.wrapS=paperTexture.wrapT=THREE.ClampToEdgeWrapping;paperTexture.repeat.set(1,1);paperTexture.encoding=THREE.sRGBEncoding;paperTexture.anisotropy=rd.capabilities.getMaxAnisotropy();
+const wallMat=new THREE.MeshStandardMaterial({map:paperTexture,roughness:0.9,side:THREE.DoubleSide});
+const doorMat=new THREE.MeshStandardMaterial({map:paperTexture,color:0xc2b39d,roughness:0.9,side:THREE.DoubleSide});
+const paperImage=new THREE.TextureLoader().load('images/paper_1.png'),paperMaterial=new THREE.SpriteMaterial({map:paperImage,transparent:true,alphaTest:0.05,depthWrite:false});
+const rooms=[],doors=[],openDoors=[],doorTargets=[],papers=[];
+function addRoomSurface(geo,mat,x,y,z,rotationY=0){const mesh=new THREE.Mesh(geo,mat);mesh.position.set(x,y,z);mesh.rotation.y=rotationY;mesh.receiveShadow=true;scene.add(mesh);return mesh}
+function roomPaper(index){
+  const sprite=new THREE.Sprite(paperMaterial);
+  sprite.scale.set(0.7,0.7,1);sprite.position.set(0,0.34,index*14-4.2);scene.add(sprite);
+  papers.push({sprite,room:index});
+}
+function buildRoom(index){
+  const center=index*14;
+  addRoomSurface(new THREE.PlaneGeometry(14,14).rotateX(-Math.PI/2),wallMat,0,0,center);
+  addRoomSurface(new THREE.PlaneGeometry(14,14).rotateX(Math.PI/2),wallMat,0,3,center);
+  addRoomSurface(new THREE.PlaneGeometry(14,3),wallMat,-7,1.5,center,Math.PI/2);
+  addRoomSurface(new THREE.PlaneGeometry(14,3),wallMat,7,1.5,center,Math.PI/2);
+  if(index===0)addRoomSurface(new THREE.PlaneGeometry(14,3),wallMat,0,1.5,-7);
+  const boundary=center+7,doorWidth=2.2,doorHeight=2.5,sideWidth=(14-doorWidth)/2;
+  addRoomSurface(new THREE.PlaneGeometry(sideWidth,3),wallMat,-(doorWidth+sideWidth)/2,1.5,boundary);
+  addRoomSurface(new THREE.PlaneGeometry(sideWidth,3),wallMat,(doorWidth+sideWidth)/2,1.5,boundary);
+  addRoomSurface(new THREE.PlaneGeometry(doorWidth,3-doorHeight),wallMat,0,doorHeight+(3-doorHeight)/2,boundary);
+  const hinge=new THREE.Group();hinge.position.set(-doorWidth/2,0,boundary);scene.add(hinge);
+  const door=new THREE.Mesh(new THREE.PlaneGeometry(doorWidth,doorHeight),doorMat);door.position.set(doorWidth/2,doorHeight/2,0);door.castShadow=true;hinge.add(door);
+  doors[index]=hinge;openDoors[index]=false;doorTargets[index]=false;rooms[index]=true;roomPaper(index);
+}
+buildRoom(0);
+const paperView=$('paper-view'),paperFrameElement=$('paper-frame'),paperPrompt=$('paper-prompt');
+const paperFrames=['images/paper_1.png','images/paper_2.png','images/paper_3.png','images/paper_4.png'];
+let activePaper=null,paperAnimating=false,paperFrame=0,paperDirection=1,paperElapsed=0;
+function showPaper(entry){
+  activePaper=entry;entry.sprite.visible=false;paperFrame=0;paperDirection=1;paperElapsed=0;paperAnimating=true;
+  paperFrameElement.src=paperFrames[paperFrame];paperPrompt.style.display='none';paperView.style.display='flex';
+}
+function openNextRoom(index){
+  doorTargets[index]=true;
+  if(!rooms[index+1])buildRoom(index+1);
+}
+function updatePaper(dt){
+  if(!activePaper||!paperAnimating)return;
+  paperElapsed+=dt;
+  while(paperElapsed>=0.18&&paperAnimating){
+    paperElapsed-=0.18;paperFrame+=paperDirection;
+    if(paperFrame>3){paperFrame=3;paperAnimating=false;paperPrompt.style.display='block';break}
+    if(paperFrame<0){
+      const room=activePaper.room;paperAnimating=false;paperView.style.display='none';activePaper=null;openNextRoom(room);break;
+    }
+    paperFrameElement.src=paperFrames[paperFrame];
+    if(paperDirection===1&&paperFrame===3){paperAnimating=false;paperPrompt.style.display='block'}
+  }
+}
 const srcMat=new THREE.MeshBasicMaterial({color:0xffd58a}),srcMesh=new THREE.Mesh(new THREE.OctahedronGeometry(0.28),srcMat);scene.add(srcMesh);
 const gc=document.createElement('canvas');gc.width=gc.height=128;const gx=gc.getContext('2d'),gr=gx.createRadialGradient(64,64,0,64,64,64);gr.addColorStop(0,'rgba(255,200,120,1)');gr.addColorStop(0.25,'rgba(255,170,70,.45)');gr.addColorStop(1,'rgba(255,150,50,0)');gx.fillStyle=gr;gx.fillRect(0,0,128,128);
 const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(gc),blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));glow.scale.setScalar(2.4);srcMesh.add(glow);
@@ -202,7 +254,7 @@ function draw(t){
   g.fill();g.strokeStyle=col['--fg'];g.lineWidth=3;g.beginPath();g.moveTo(a,b);g.lineTo(a-Math.sin(yaw)*22,b-Math.cos(yaw)*22);g.stroke();}
 
 /* ---------- movement & look ---------- */
-addEventListener('keydown',e=>{keys[e.code]=true});addEventListener('keyup',e=>{keys[e.code]=false});addEventListener('blur',()=>{for(const k in keys)keys[k]=false});
+addEventListener('keydown',e=>{if(e.code==='Enter'&&activePaper&&!paperAnimating&&paperPrompt.style.display!=='none'){e.preventDefault();paperDirection=-1;paperAnimating=true;paperElapsed=0;paperPrompt.style.display='none'}keys[e.code]=true});addEventListener('keyup',e=>{keys[e.code]=false});addEventListener('blur',()=>{for(const k in keys)keys[k]=false});
 let ld=null,lx=0;const gl=$('gl');
 gl.onpointerdown=e=>{ld=e.pointerId;lx=e.clientX;gl.setPointerCapture(e.pointerId)};
 gl.onpointermove=e=>{if(e.pointerId===ld){mYaw-=(e.clientX-lx)*0.005;lx=e.clientX}};
@@ -247,9 +299,17 @@ $('ht').onchange=async()=>{stopHead();mode=$('ht').value;
 let last=performance.now();
 function frame(t){requestAnimationFrame(frame);const dt=Math.min(0.05,(t-last)/1000);last=t;
   const tg=(mode!=='off'&&hRaw!==null)?wr(hRaw-hRef):0;hYaw+=(tg-hYaw)*0.3;yaw=mYaw+hYaw;
+  for(let i=0;i<doors.length;i++)if(doorTargets[i]&&!openDoors[i]){doors[i].rotation.y+=(-Math.PI/2-doors[i].rotation.y)*Math.min(1,dt*5);if(doors[i].rotation.y<-1.45)openDoors[i]=true}
   let f=(keys.KeyW?1:0)-(keys.KeyS?1:0)+joy.y,r=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x;
   const l=Math.hypot(f,r);if(l>1){f/=l;r/=l}
-  X=cl(X+(-Math.sin(yaw)*f+Math.cos(yaw)*r)*2.5*dt,R-PR);Z=cl(Z+(-Math.cos(yaw)*f-Math.sin(yaw)*r)*2.5*dt,R-PR);
+  X=cl(X+(-Math.sin(yaw)*f+Math.cos(yaw)*r)*2.5*dt,R-PR);
+  let nextZ=Z+(-Math.cos(yaw)*f-Math.sin(yaw)*r)*2.5*dt;
+  for(let i=0;i<rooms.length;i++){const boundary=7+14*i;if(openDoors[i])continue;
+    if(Z<boundary&&nextZ>=boundary-PR)nextZ=Math.min(nextZ,boundary-PR);
+    else if(Z>=boundary&&nextZ<=boundary+PR)nextZ=Math.max(nextZ,boundary+PR);}
+  Z=Math.max(-R+PR,nextZ);
+  if(!activePaper){const nearby=papers.find(p=>p.sprite.visible&&Math.hypot(X-p.sprite.position.x,Z-p.sprite.position.z)<1.1);if(nearby)showPaper(nearby)}
+  updatePaper(dt);
   mv+=(Math.min(1,l)-mv)*0.2;wob+=dt*(3+mv*9);
   if($('orb').checked){u+=$('os').value/360*dt;[sx,sz]=pathAt(u)}
   const sy=Math.min(2.8,Math.max(0.2,0.45+ +$('h').value));srcMesh.position.set(sx,sy,sz);srcMesh.scale.setScalar(1+0.12*Math.sin(t/200));srcMesh.rotation.y+=dt;line.position.y=sy;light.position.set(sx,sy,sz);
