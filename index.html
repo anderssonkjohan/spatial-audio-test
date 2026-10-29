@@ -3,6 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Spatial Audio Player 3D</title>
+<link rel="preload" as="image" href="images/paper_1.png">
+<link rel="preload" as="image" href="images/paper_2.png">
+<link rel="preload" as="image" href="images/paper_3.png">
+<link rel="preload" as="image" href="images/paper_4.png">
 <style>
 :root{--bg:#0b0d14;--card:#141722;--fg:#f2e9dc;--mut:#9a9fb2;--acc:#ffb347;--ln:rgba(255,190,110,.2);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}
@@ -11,13 +15,14 @@ body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-appl
 #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 #ui{position:fixed;inset:env(safe-area-inset-top,0px) 0 auto;z-index:5;pointer-events:none}
 #toolbar{display:flex;justify-content:flex-end;gap:6px;padding:12px;pointer-events:auto}
-button{font:inherit;border:1px solid var(--ln);background:rgba(20,23,34,.86);color:var(--fg);border-radius:10px;padding:8px 10px;cursor:pointer}
-.tool{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px}
-.tool img{width:24px;height:24px;object-fit:contain}
+button{font:inherit;border:0;background:transparent;color:var(--fg);border-radius:10px;padding:10px 12px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+.tool{display:flex;align-items:center;justify-content:center;gap:8px;min-height:56px}
+.tool img{width:36px;height:36px;object-fit:contain}
 .tool span{font-size:12px;line-height:1.15}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.tool[aria-pressed=true]{border-color:var(--acc);box-shadow:0 0 12px rgba(255,179,71,.35)}
-#status{position:fixed;top:calc(68px + env(safe-area-inset-top,0px));right:12px;max-width:min(420px,calc(100vw - 24px));padding:5px 9px;border-radius:8px;background:rgba(20,23,34,.78);color:var(--fg);font-size:12px;pointer-events:none}
+.tool[aria-pressed=true]{filter:drop-shadow(0 0 8px rgba(255,179,71,.8))}
+#status{position:fixed;top:calc(82px + env(safe-area-inset-top,0px));right:12px;max-width:min(420px,calc(100vw - 24px));padding:5px 9px;border-radius:8px;background:rgba(20,23,34,.78);color:var(--fg);font-size:12px;pointer-events:none}
 #status:empty{display:none}
 #keyboard-hint{position:fixed;left:24px;bottom:calc(24px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(3,44px);gap:4px;z-index:3;pointer-events:none}
 #keyboard-hint img{width:44px;height:44px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.7));transition:transform 80ms ease,filter 80ms ease}
@@ -31,19 +36,22 @@ button{font:inherit;border:1px solid var(--ln);background:rgba(20,23,34,.86);col
 #knob{position:absolute;left:calc(50% - 13px);top:calc(50% - 13px);width:26px;height:26px;border-radius:50%;background:rgba(255,179,71,.78);pointer-events:none}
 #paper-view{position:fixed;inset:0;z-index:4;display:none;align-items:center;justify-content:center;pointer-events:none}
 #paper-view img{width:min(72vw,520px);height:min(72vh,520px);object-fit:contain;filter:drop-shadow(0 12px 24px rgba(0,0,0,.28))}
-#paper-prompt{position:absolute;bottom:14vh;padding:10px 16px;border-radius:10px;background:rgba(20,23,34,.9);color:var(--fg);font-weight:600;pointer-events:auto}
+#paper-prompt{position:absolute;bottom:12vh;padding:8px;background:transparent;color:var(--fg);font-weight:600;pointer-events:auto}
+#paper-prompt img{width:64px;height:64px;object-fit:contain}
+#reset-flash{position:fixed;inset:0;z-index:20;background:#fff;opacity:0;pointer-events:none}
 #pause-menu{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.58)}
 #pause-card{width:min(440px,100%);max-height:100%;overflow:auto;padding:24px;border:1px solid var(--ln);border-radius:18px;background:rgba(12,14,22,.76) url("images/pause_menu_background.png") center/cover no-repeat;backdrop-filter:blur(4px)}
 #pause-card h1{margin:0}
 #pause-card h2{margin:16px 0 6px;font-size:15px}
 #pause-card ul{margin:0;padding-left:22px;color:var(--fg)}
 #resume{display:flex;align-items:center;justify-content:center;width:100%;margin:8px 0 12px;padding:8px}
-#resume img{width:140px;height:42px;object-fit:contain}
-@media(max-width:520px){#toolbar{gap:4px;padding:8px}.tool{flex:1;min-width:0;gap:3px;padding:6px 4px;flex-direction:column}.tool span{font-size:10px}#status{top:calc(108px + env(safe-area-inset-top,0px));right:8px;font-size:11px}#keyboard-hint{left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px))}}
+#resume img{width:160px;height:48px;object-fit:contain}
+@media(max-width:520px){#toolbar{gap:4px;padding:8px}.tool{flex:1;min-width:0;gap:3px;padding:6px 4px;flex-direction:column}.tool img{width:40px;height:40px}.tool span{font-size:10px}#status{top:calc(108px + env(safe-area-inset-top,0px));right:8px;font-size:11px}#keyboard-hint{left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px))}}
 @media(pointer:coarse){#keyboard-hint{display:none}}
 </style></head><body>
 <canvas id="gl"></canvas>
-<div id="paper-view" aria-live="polite"><img id="paper-frame" src="images/paper_1.png" alt="Unfolding paper"><button id="paper-prompt" style="display:none">Close message</button></div>
+<div id="reset-flash" aria-hidden="true"></div>
+<div id="paper-view" aria-live="polite"><img id="paper-frame" src="images/paper_1.png" alt="Unfolding paper"><button id="paper-prompt" aria-label="Close message" title="Close message" style="display:none"><img src="images/enter.png" alt="Close message"></button></div>
 <div id="joy"><img src="images/joystick.png" alt=""><div id="knob"></div></div>
 <div id="keyboard-hint" aria-hidden="true"><img data-key="KeyW" src="images/W.png" alt=""><img data-key="KeyA" src="images/A.png" alt=""><img data-key="KeyS" src="images/S.png" alt=""><img data-key="KeyD" src="images/D.png" alt=""></div>
 <div id="ui"><div id="toolbar">
@@ -146,6 +154,26 @@ paperTexture.wrapS=paperTexture.wrapT=THREE.ClampToEdgeWrapping;paperTexture.rep
 const wallMat=new THREE.MeshStandardMaterial({map:paperTexture,roughness:0.9,side:THREE.DoubleSide});
 const doorMat=new THREE.MeshStandardMaterial({map:paperTexture,color:0xc2b39d,roughness:0.9,side:THREE.DoubleSide});
 const paperImage=new THREE.TextureLoader().load('images/paper_1.png'),paperMaterial=new THREE.SpriteMaterial({map:paperImage,transparent:true,alphaTest:0.05,depthWrite:false});
+const resetItemTexture=new THREE.CanvasTexture(document.createElement('canvas'));
+resetItemTexture.encoding=THREE.sRGBEncoding;
+new THREE.TextureLoader().load('images/paper_1.png',texture=>{
+  const image=texture.image,canvas=resetItemTexture.image;
+  canvas.width=image.width;canvas.height=image.height;
+  const context=canvas.getContext('2d');
+  if(!context)throw new Error('Could not create the reset item texture.');
+  context.drawImage(image,0,0);
+  const pixels=context.getImageData(0,0,canvas.width,canvas.height);
+  for(let i=0;i<pixels.data.length;i+=4){
+    pixels.data[i]=255-pixels.data[i];
+    pixels.data[i+1]=255-pixels.data[i+1];
+    pixels.data[i+2]=255-pixels.data[i+2];
+  }
+  context.putImageData(pixels,0,0);
+  resetItemTexture.needsUpdate=true;
+  texture.dispose();
+});
+const resetItem=new THREE.Sprite(new THREE.SpriteMaterial({map:resetItemTexture,transparent:true,alphaTest:0.05,depthWrite:false}));
+resetItem.scale.set(0.52,0.52,1);resetItem.position.set(0,0.34,-4.2);resetItem.visible=false;scene.add(resetItem);
 const rooms=[],doors=[],openDoors=[],doorTargets=[],papers=[];
 function addRoomSurface(geo,mat,x,y,z,rotationY=0){const mesh=new THREE.Mesh(geo,mat);mesh.position.set(x,y,z);mesh.rotation.y=rotationY;mesh.receiveShadow=true;scene.add(mesh);return mesh}
 function roomPaper(index){
@@ -176,7 +204,8 @@ function showPaper(entry){
   activePaper=entry;entry.sprite.visible=false;paperFrame=0;paperDirection=1;paperElapsed=0;paperAnimating=true;
   playPaperSound(0);
   collectedMessages++;
-  if(collectedMessages>=7)changeSourceForm();
+  if(collectedMessages===7)changeSourceForm();
+  if(collectedMessages===8)resetItem.visible=true;
   paperFrameElement.src=paperFrames[paperFrame];paperPrompt.style.display='none';paperView.style.display='flex';
 }
 function openNextRoom(index){
@@ -229,6 +258,27 @@ function changeSourceForm(){
   srcMesh.geometry.dispose();srcMesh.geometry=new THREE.TetrahedronGeometry(0.34);
   srcMat.color.set(0x80eaff);glow.material.color.set(0x80eaff);light.color.set(0x80eaff);
   trail.forEach(point=>point.sprite.material.color.set(0x80eaff));
+}
+function resetSourceForm(){
+  srcMesh.geometry.dispose();srcMesh.geometry=new THREE.OctahedronGeometry(0.28);
+  srcMat.color.set(0xffd58a);glow.material.color.set(0xffffff);light.color.set(0xffb347);
+  trail.forEach(point=>point.sprite.material.color.set(0xffc46b));
+}
+function resetGame(){
+  collectedMessages=0;papers.forEach(entry=>entry.sprite.visible=true);
+  for(let i=0;i<doors.length;i++){
+    doors[i].rotation.y=0;openDoors[i]=false;doorTargets[i]=false;
+  }
+  activePaper=null;paperAnimating=false;paperPrompt.style.display='none';paperView.style.display='none';
+  resetItem.visible=false;
+  X=0;Z=-2;yaw=0;mYaw=0;hYaw=0;sx=0;sz=-2;sourceJourney=null;
+  for(const key in keys)keys[key]=false;
+  joy={x:0,y:0};resetSourceForm();
+  trail.forEach(point=>{point.age=1;point.sprite.visible=false});
+  const flash=$('reset-flash');
+  flash.style.transition='none';flash.style.opacity='1';
+  void flash.offsetWidth;
+  flash.style.transition='opacity 900ms ease-out';flash.style.opacity='0';
 }
 const sceneBackground=new THREE.Color(0x0b0d14);
 scene.background=sceneBackground;scene.fog=new THREE.Fog(sceneBackground,6,24);
@@ -379,7 +429,11 @@ function frame(t){requestAnimationFrame(frame);const dt=Math.min(0.05,(t-last)/1
     else if(Z>=boundary&&nextZ<=boundary+PR)nextZ=Math.max(nextZ,boundary+PR);
   }
   Z=Math.max(-R+PR,nextZ);
-  if(!activePaper){const nearby=papers.find(p=>p.sprite.visible&&Math.hypot(X-p.sprite.position.x,Z-p.sprite.position.z)<1.1);if(nearby)showPaper(nearby)}
+  if(!activePaper){
+    const nearby=papers.find(p=>p.sprite.visible&&Math.hypot(X-p.sprite.position.x,Z-p.sprite.position.z)<1.1);
+    if(nearby)showPaper(nearby);
+    else if(resetItem.visible&&Math.hypot(X-resetItem.position.x,Z-resetItem.position.z)<1.1)resetGame();
+  }
   updatePaper(dt);
   const walking=Math.abs(f)>0.1;
   mv+=((walking?1:0)-mv)*Math.min(1,dt*8);wob+=dt*(3+mv*9);
