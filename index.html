@@ -99,9 +99,27 @@ function init(){
   paperPanner.connect(paperWet);paperWet.connect(conv);
   conv.connect(wet);dry.connect(master);wet.connect(master);master.connect(ctx.destination);
   const routedAudio=(file,spatializer,volume=1)=>{
-    const audio=new Audio(`audio/${file}`);audio.preload='auto';
-    audio.volume=volume;
-    ctx.createMediaElementSource(audio).connect(spatializer);
+    const gain=ctx.createGain();gain.gain.value=volume;gain.connect(spatializer);
+    const bufferPromise=fetch(`audio/${file}`).then(r=>{if(!r.ok)throw new Error(`${file}: HTTP ${r.status}`);return r.arrayBuffer()}).then(data=>ctx.decodeAudioData(data));
+    bufferPromise.catch(()=>{});
+    const audio={loop:false,currentTime:0,_src:null,_t0:0,_want:false,
+      async play(){
+        this._want=true;
+        const buffer=await bufferPromise;
+        if(!this._want)return;
+        if(this._src){this._src.onended=null;try{this._src.stop()}catch(e){}}
+        const src=ctx.createBufferSource();src.buffer=buffer;src.loop=this.loop;src.connect(gain);
+        src.onended=()=>{if(this._src===src){this._src=null;this.currentTime=0}};
+        src.start(0,this.currentTime%buffer.duration);
+        this._t0=ctx.currentTime;this._src=src;
+      },
+      pause(){
+        this._want=false;
+        const src=this._src;if(!src)return;
+        this.currentTime+=ctx.currentTime-this._t0;
+        if(src.buffer&&this.loop)this.currentTime%=src.buffer.duration;
+        src.onended=null;this._src=null;try{src.stop()}catch(e){}
+      }};
     return audio;
   };
   humAudio=routedAudio('hum_proto.mp3',panner,0.55);humAudio.loop=true;
