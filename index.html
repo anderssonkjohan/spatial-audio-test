@@ -64,7 +64,7 @@ button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
 <div id="pause-card"><h1 id="pause-heading">Paused</h1><button id="resume" title="Resume"><img src="images/resume.png" alt="Resume"></button>
 <h2>Computer controls</h2><ul><li>W / S: walk forward / backward</li><li>A / D: turn left / right</li><li>Drag the view to look around</li><li>Enter: close a message</li></ul>
 <h2>Mobile controls</h2><ul><li>Move the joystick up / down to walk</li><li>Move it left / right to turn</li><li>Tap “Close message” to continue</li></ul>
-<h2>Optional controls</h2><ul><li>Steer with facial tracking or the movement sensor using the top buttons</li><li>Mute or unmute sound with the speaker button</li><li>Pause with the top-right button; resume with the Resume button or Escape</li></ul>
+<h2>Optional controls</h2><ul><li>Use facial tracking or the movement sensor to steer; tilt the device forward or backward to walk with the movement sensor</li><li>Mute or unmute sound with the speaker button</li><li>Pause with the top-right button; resume with the Resume button or Escape</li></ul>
 </div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -373,11 +373,12 @@ if(matchMedia('(pointer:coarse)').matches||'ontouchstart' in window){
   J.onpointerup=J.onpointercancel=()=>{jp=null;joy={x:0,y:0};K.style.transform=''};}
 
 /* ---------- head tracking ---------- */
-let stream,camTimer,camBusy=false,trackingRequest=0;
+let stream,camTimer,camBusy=false,trackingRequest=0,tiltRaw=null,tiltRef=null;
 const sample=v=>{hRaw=v;if(hRef===null)hRef=v};
 function onOri(e){if(e.alpha==null||e.beta==null)return;const r=Math.PI/180,a=e.alpha*r,b=e.beta*r,m=e.gamma*r;
   const vx=-Math.cos(a)*Math.sin(m)-Math.sin(a)*Math.sin(b)*Math.cos(m),vy=-Math.sin(a)*Math.sin(m)+Math.cos(a)*Math.sin(b)*Math.cos(m);
-  sample(Math.hypot(vx,vy)>0.2?-Math.atan2(vx,vy):a)}
+  sample(Math.hypot(vx,vy)>0.2?-Math.atan2(vx,vy):a);
+  tiltRaw=e.beta;if(tiltRef===null)tiltRef=tiltRaw}
 function faceYaw(f){const mx=l=>l.locations.reduce((s,p)=>s+p.x,0)/l.locations.length,L=f.landmarks||[];
   const es=L.filter(l=>l.type==='eye').map(mx),o=L.find(l=>l.type==='nose')||L.find(l=>l.type==='mouth');
   if(es.length!==2||!o)return null;const d=Math.abs(es[0]-es[1])||1;
@@ -405,7 +406,7 @@ async function startCam(request){
 function stopHead(){
   clearInterval(camTimer);camTimer=null;
   if(stream)stream.getTracks().forEach(track=>track.stop());
-  stream=null;removeEventListener('deviceorientation',onOri);hRaw=hRef=null;
+  stream=null;removeEventListener('deviceorientation',onOri);hRaw=hRef=tiltRaw=tiltRef=null;
 }
 async function setTracking(nextMode){
   const request=++trackingRequest;
@@ -437,7 +438,9 @@ function frame(t){requestAnimationFrame(frame);const dt=Math.min(0.05,(t-last)/1
   const tg=(mode!=='off'&&hRaw!==null)?wr(hRaw-hRef):0;hYaw+=(tg-hYaw)*Math.min(1,dt*8);
   const turn=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x;mYaw-=turn*2.2*dt;yaw=mYaw+hYaw;
   for(let i=0;i<doors.length;i++)if(doorTargets[i]&&!openDoors[i]){doors[i].rotation.y+=(-Math.PI/2-doors[i].rotation.y)*Math.min(1,dt*5);if(doors[i].rotation.y<-1.45)openDoors[i]=true}
-  const f=(keys.KeyW?1:0)-(keys.KeyS?1:0)+joy.y;
+  const tilt=mode==='sensor'&&tiltRaw!==null?tiltRef-tiltRaw:0;
+  const sensorWalk=Math.sign(tilt)*cl(Math.max(0,Math.abs(tilt)-5)/25,1);
+  const f=(keys.KeyW?1:0)-(keys.KeyS?1:0)+joy.y+sensorWalk;
   X=cl(X-Math.sin(yaw)*f*2.5*dt,R-PR);
   let nextZ=Z-Math.cos(yaw)*f*2.5*dt;
   for(let i=0;i<rooms.length;i++){
